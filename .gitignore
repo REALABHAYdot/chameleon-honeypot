@@ -1,0 +1,6 @@
+history.log
+LINUX_TERMINAL_COMMANDS.jsonl
+__pycache__/
+.venv/
+*.pyc
+.env

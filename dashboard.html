@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chameleon Honeypot Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root {
+      --bg:#0d1117; --surface:#161b22; --border:#30363d;
+      --green:#39d353; --red:#f85149; --yellow:#d29922;
+      --blue:#58a6ff; --purple:#bc8cff; --text:#e6edf3; --muted:#8b949e;
+    }
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;font-size:14px;}
+    header{background:var(--surface);border-bottom:1px solid var(--border);padding:16px 24px;display:flex;align-items:center;justify-content:space-between;}
+    header h1{font-size:20px;color:var(--green);letter-spacing:1px;}
+    .status-dot{width:10px;height:10px;border-radius:50%;background:var(--green);display:inline-block;margin-right:8px;animation:pulse 1.5s infinite;}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
+    .badge{padding:2px 10px;border-radius:20px;font-size:12px;font-weight:bold;}
+    .badge-live{background:var(--green);color:#000;}
+    .badge-offline{background:#7c3aed;color:#fff;}
+    main{padding:24px;max-width:1400px;margin:0 auto;}
+    .stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:24px;}
+    .stat-card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:20px;}
+    .stat-card .label{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;}
+    .stat-card .value{font-size:32px;font-weight:bold;}
+    .stat-card.green .value{color:var(--green);}
+    .stat-card.red .value{color:var(--red);}
+    .stat-card.blue .value{color:var(--blue);}
+    .stat-card.yellow .value{color:var(--yellow);}
+    .two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px;}
+    .three-col{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:24px;}
+    @media(max-width:800px){.two-col,.three-col{grid-template-columns:1fr;}}
+    .card{background:var(--surface);border:1px solid var(--border);border-radius:8px;overflow:hidden;}
+    .card-header{padding:12px 16px;border-bottom:1px solid var(--border);color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:1px;display:flex;align-items:center;justify-content:space-between;}
+    .card-body{padding:16px;max-height:320px;overflow-y:auto;}
+    .chart-body{padding:16px;height:220px;position:relative;}
+    .log-entry{display:flex;gap:10px;padding:6px 0;border-bottom:1px solid #21262d;font-size:12px;align-items:flex-start;}
+    .log-entry:last-child{border-bottom:none;}
+    .log-type{min-width:90px;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:bold;text-align:center;}
+    .log-type.LOGIN{background:#1a3a2a;color:var(--green);}
+    .log-type.COMMAND{background:#1a2a3a;color:var(--blue);}
+    .log-type.CONNECTION{background:#2a2a1a;color:var(--yellow);}
+    .log-type.DISCONNECT{background:#3a1a1a;color:var(--red);}
+    .log-type.STARTUP{background:#2a1a3a;color:var(--purple);}
+    .log-type.ERROR{background:#3a1a1a;color:var(--red);}
+    .log-time{color:var(--muted);min-width:140px;}
+    .log-ip{color:var(--yellow);min-width:110px;}
+    .log-msg{color:var(--text);word-break:break-all;}
+    .cmd-row{display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid #21262d;}
+    .cmd-row:last-child{border-bottom:none;}
+    .cmd-name{color:var(--blue);min-width:120px;font-weight:bold;}
+    .cmd-bar-wrap{flex:1;background:#21262d;border-radius:4px;height:8px;overflow:hidden;}
+    .cmd-bar{height:100%;background:var(--blue);border-radius:4px;}
+    .cmd-count{color:var(--muted);min-width:30px;text-align:right;}
+    .geo-table{width:100%;border-collapse:collapse;font-size:12px;}
+    .geo-table th{text-align:left;padding:6px 8px;color:var(--muted);border-bottom:1px solid var(--border);}
+    .geo-table td{padding:8px;border-bottom:1px solid #21262d;}
+    .geo-table tr:last-child td{border-bottom:none;}
+    ::-webkit-scrollbar{width:6px;}
+    ::-webkit-scrollbar-track{background:var(--bg);}
+    ::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
+    .empty{color:var(--muted);text-align:center;padding:32px;font-size:13px;}
+    .section-title{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;}
+
+    /* ML Metrics Panel */
+    .ml-metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px;}
+    .ml-metric{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px;text-align:center;}
+    .ml-metric .ml-label{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;}
+    .ml-metric .ml-value{font-size:22px;font-weight:bold;color:var(--purple);}
+    .ml-metric .ml-sub{color:var(--muted);font-size:10px;margin-top:4px;}
+    .ml-badge{display:inline-block;background:#1a1a3a;color:var(--purple);border:1px solid var(--purple);padding:2px 10px;border-radius:20px;font-size:11px;margin-bottom:16px;}
+
+    /* Feature importance */
+    .feat-row{display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid #21262d;font-size:12px;}
+    .feat-row:last-child{border-bottom:none;}
+    .feat-name{color:var(--text);min-width:140px;}
+    .feat-bar-wrap{flex:1;background:#21262d;border-radius:4px;height:6px;overflow:hidden;}
+    .feat-bar{height:100%;background:var(--purple);border-radius:4px;}
+    .feat-val{color:var(--muted);min-width:55px;text-align:right;font-size:11px;}
+  </style>
+</head>
+<body>
+
+<header>
+  <div>
+    <span class="status-dot" id="status-dot"></span>
+    <h1 style="display:inline">CHAMELEON HONEYPOT</h1>
+    <span style="color:var(--muted);margin-left:16px;font-size:13px">AI-Powered SSH Decoy</span>
+  </div>
+  <div style="display:flex;align-items:center;gap:10px;">
+    <span id="mode-badge" class="badge badge-live">● LIVE</span>
+  </div>
+</header>
+
+<main>
+
+  <!-- Stat Cards -->
+  <div class="stats-grid">
+    <div class="stat-card green"><div class="label">Total Connections</div><div class="value" id="stat-connections">—</div></div>
+    <div class="stat-card red"><div class="label">Login Attempts</div><div class="value" id="stat-logins">—</div></div>
+    <div class="stat-card blue"><div class="label">Commands Run</div><div class="value" id="stat-commands">—</div></div>
+    <div class="stat-card yellow"><div class="label">Unique Attackers</div><div class="value" id="stat-ips">—</div></div>
+  </div>
+
+  <!-- Top Commands + Active Attackers -->
+  <div class="two-col">
+    <div class="card">
+      <div class="card-header"><span>Top Commands Used</span></div>
+      <div class="card-body" id="top-commands"><div class="empty">Loading...</div></div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span>Active Attackers</span></div>
+      <div class="card-body" id="attacker-list"><div class="empty">Loading...</div></div>
+    </div>
+  </div>
+
+  <!-- ML Model Info -->
+  <p class="section-title">ML Model — Real Attack Prediction</p>
+  <div id="ml-model-badge" style="margin-bottom:12px;">
+    <span class="ml-badge" id="ml-method-label">Loading model...</span>
+    <span style="color:var(--muted);font-size:11px;margin-left:8px;" id="ml-note"></span>
+  </div>
+
+  <!-- ML Metrics -->
+  <div class="ml-metrics" id="ml-metrics-grid">
+    <div class="ml-metric"><div class="ml-label">Model</div><div class="ml-value" id="ml-model" style="font-size:13px;margin-top:4px;">—</div></div>
+    <div class="ml-metric"><div class="ml-label">MAE</div><div class="ml-value" id="ml-mae">—</div><div class="ml-sub">Mean Abs Error</div></div>
+    <div class="ml-metric"><div class="ml-label">RMSE</div><div class="ml-value" id="ml-rmse">—</div><div class="ml-sub">Root Mean Sq Error</div></div>
+    <div class="ml-metric"><div class="ml-label">R² Score</div><div class="ml-value" id="ml-r2">—</div><div class="ml-sub">Fit Quality (1.0 = perfect)</div></div>
+  </div>
+
+  <!-- Graphs + Feature Importance -->
+  <div class="three-col">
+    <div class="card">
+      <div class="card-header"><span>Hourly Command Activity</span></div>
+      <div class="chart-body"><canvas id="chart-hourly"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span>7-Day Attack Forecast (ML)</span></div>
+      <div class="chart-body"><canvas id="chart-trend"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span>Attack Type Breakdown</span></div>
+      <div class="chart-body"><canvas id="chart-categories"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Feature Importance -->
+  <div class="two-col">
+    <div class="card" style="margin-bottom:24px;">
+      <div class="card-header"><span>Feature Importance (ML Coefficients)</span></div>
+      <div class="card-body" id="feature-importance"><div class="empty">Run model to see feature weights</div></div>
+    </div>
+    <div class="card" style="margin-bottom:24px;">
+      <div class="card-header"><span>Attacker Locations</span></div>
+      <div class="card-body" id="geo-table"><div class="empty">No geo data yet</div></div>
+    </div>
+  </div>
+
+  <!-- Live Feed -->
+  <div class="card">
+    <div class="card-header">
+      <span>📡 Live Event Feed</span>
+      <span style="color:var(--muted);font-size:11px">Live monitoring active</span>
+    </div>
+    <div class="card-body" id="feed-body"><div class="empty">Loading...</div></div>
+  </div>
+
+</main>
+
+<script>
+  const API = "http://localhost:5000/api";
+  let chartHourly=null, chartTrend=null, chartCategories=null;
+
+  function esc(str){ return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+  async function fetchStatus() {
+    try {
+      const d = await (await fetch(`${API}/status`)).json();
+      const badge = document.getElementById("mode-badge");
+      const dot   = document.getElementById("status-dot");
+      if (d.honeypot_live) {
+        badge.textContent="● LIVE"; badge.className="badge badge-live";
+        dot.style.background="var(--green)"; dot.style.animation="pulse 1.5s infinite";
+      } else {
+        badge.textContent="OFFLINE — Historical Data"; badge.className="badge badge-offline";
+        dot.style.background="#7c3aed"; dot.style.animation="none";
+      }
+    } catch(e) {
+      document.getElementById("mode-badge").textContent="⚠ API DOWN";
+      document.getElementById("mode-badge").style.background="#f85149";
+    }
+  }
+
+  async function fetchStats() {
+    try {
+      const d = await (await fetch(`${API}/stats`)).json();
+      document.getElementById("stat-connections").textContent = d.total_connections;
+      document.getElementById("stat-logins").textContent      = d.total_logins;
+      document.getElementById("stat-commands").textContent    = d.total_commands;
+      document.getElementById("stat-ips").textContent         = d.unique_ips;
+
+      const cmdEl = document.getElementById("top-commands");
+      if (d.top_commands && d.top_commands.length > 0) {
+        const max = d.top_commands[0][1];
+        cmdEl.innerHTML = d.top_commands.map(([cmd,count]) => `
+          <div class="cmd-row">
+            <span class="cmd-name">${esc(cmd)}</span>
+            <div class="cmd-bar-wrap"><div class="cmd-bar" style="width:${Math.round((count/max)*100)}%"></div></div>
+            <span class="cmd-count">${count}</span>
+          </div>`).join("");
+      } else { cmdEl.innerHTML='<div class="empty">No commands yet</div>'; }
+
+      const atEl = document.getElementById("attacker-list");
+      if (d.attacker_sessions && d.attacker_sessions.length > 0) {
+        atEl.innerHTML = d.attacker_sessions.map(s => `
+          <div class="log-entry">
+            <span class="log-type CONNECTION">ATTACKER</span>
+            <span class="log-ip">${esc(s.ip)}</span>
+            <span class="log-msg">${s.commands} cmds | ${esc(s.first_seen||"?")}</span>
+          </div>`).join("");
+      } else { atEl.innerHTML='<div class="empty">No attackers yet</div>'; }
+    } catch(e) {}
+  }
+
+  async function fetchFeed() {
+    try {
+      const logs = await (await fetch(`${API}/recent`)).json();
+      const el = document.getElementById("feed-body");
+      if (!logs.length) { el.innerHTML='<div class="empty">No events yet</div>'; return; }
+      el.innerHTML = [...logs].reverse().map(entry => {
+        const type = entry.type||"EVENT";
+        let msg="";
+        if(type==="LOGIN") msg=`${esc(entry.username||"")} / ${esc(entry.password||"")}`;
+        else if(type==="COMMAND") msg=`<span style="color:var(--green)">$</span> ${esc(entry.command||"")}`;
+        else msg=esc(entry.message||"");
+        return `<div class="log-entry">
+          <span class="log-type ${type}">${type}</span>
+          <span class="log-time">${entry.timestamp||""}</span>
+          <span class="log-ip">${esc(entry.ip||"")}</span>
+          <span class="log-msg">${msg}</span>
+        </div>`;
+      }).join("");
+    } catch(e) {}
+  }
+
+  async function fetchGeo() {
+    try {
+      const data = await (await fetch(`${API}/geo`)).json();
+      const el = document.getElementById("geo-table");
+      if (!data.length) { el.innerHTML='<div class="empty">No geo data yet — deploy to VPS for real attacker locations</div>'; return; }
+      el.innerHTML = `<table class="geo-table">
+        <thead><tr><th>IP</th><th>Country</th><th>City</th><th>ISP</th><th>Attempts</th></tr></thead>
+        <tbody>${data.map(a=>`<tr>
+          <td style="color:var(--yellow)">${esc(a.ip)}</td>
+          <td>${a.countryCode?`<img src="https://flagcdn.com/16x12/${a.countryCode.toLowerCase()}.png" style="margin-right:6px;vertical-align:middle;">`:""}${esc(a.country)}</td>
+          <td style="color:var(--muted)">${esc(a.city)}</td>
+          <td style="color:var(--muted)">${esc(a.isp)}</td>
+          <td style="color:var(--red);font-weight:bold">${a.attempts}</td>
+        </tr>`).join("")}</tbody></table>`;
+    } catch(e) {}
+  }
+
+  async function fetchPredictions() {
+    try {
+      const data = await (await fetch(`${API}/predictions`)).json();
+
+      // -- ML Metrics --
+      document.getElementById("ml-method-label").textContent = data.method === "linear_regression" ? "🤖 Linear Regression Model" : "📊 Moving Average (need more data)";
+      document.getElementById("ml-note").textContent = data.note || "";
+      const m = data.metrics || {};
+      document.getElementById("ml-model").textContent = m.model || "—";
+      document.getElementById("ml-mae").textContent   = m.mae !== undefined ? m.mae : "—";
+      document.getElementById("ml-rmse").textContent  = m.rmse !== undefined ? m.rmse : "—";
+      document.getElementById("ml-r2").textContent    = m.r2 !== undefined ? m.r2 : "—";
+
+      // -- Feature Importance --
+      const featEl = document.getElementById("feature-importance");
+      if (data.feature_importance && data.feature_importance.length > 0) {
+        const maxCoef = Math.max(...data.feature_importance.map(f => Math.abs(f.coefficient)));
+        featEl.innerHTML = data.feature_importance.map(f => `
+          <div class="feat-row">
+            <span class="feat-name">${esc(f.feature)}</span>
+            <div class="feat-bar-wrap"><div class="feat-bar" style="width:${maxCoef>0?Math.round((Math.abs(f.coefficient)/maxCoef)*100):0}%"></div></div>
+            <span class="feat-val">${f.coefficient > 0 ? '+' : ''}${f.coefficient}</span>
+          </div>`).join("");
+      } else {
+        featEl.innerHTML = '<div class="empty">Need 3+ days of data for feature importance</div>';
+      }
+
+      // -- Graph 1: Hourly --
+      const hL = data.hourly_activity.length ? data.hourly_activity.map(d=>d.hour) : ["No data"];
+      const hD = data.hourly_activity.length ? data.hourly_activity.map(d=>d.commands) : [0];
+      if (!chartHourly) {
+        chartHourly = new Chart(document.getElementById("chart-hourly"), {
+          type:"bar",
+          data:{labels:hL,datasets:[{label:"Commands",data:hD,backgroundColor:"#58a6ff55",borderColor:"#58a6ff",borderWidth:1}]},
+          options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+            scales:{x:{ticks:{color:"#8b949e",font:{size:10}},grid:{color:"#21262d"}},y:{ticks:{color:"#8b949e"},grid:{color:"#21262d"},beginAtZero:true}}}
+        });
+      } else { chartHourly.data.labels=hL; chartHourly.data.datasets[0].data=hD; chartHourly.update("none"); }
+
+      // -- Graph 2: Trend + 7-day ML forecast --
+      const hist = data.historical || [];
+      const pred = data.predicted  || [];
+      const tL = [...hist.map(d=>d.day), ...pred.map(d=>d.day)];
+      const tR = [...hist.map(d=>d.logins), ...pred.map(()=>null)];
+      const tP = [...hist.map(()=>null),    ...pred.map(d=>d.predicted)];
+      if (hist.length && pred.length) tP[hist.length-1] = hist[hist.length-1].logins;
+
+      if (!chartTrend) {
+        chartTrend = new Chart(document.getElementById("chart-trend"), {
+          type:"line",
+          data:{labels:tL.length?tL:["No data"],datasets:[
+            {label:"Real Attacks",data:tR,borderColor:"#39d353",backgroundColor:"#39d35322",tension:0.3,spanGaps:false,pointRadius:4},
+            {label:"ML Forecast",data:tP,borderColor:"#f85149",backgroundColor:"#f8514922",borderDash:[5,5],tension:0.3,spanGaps:false,pointRadius:4}
+          ]},
+          options:{responsive:true,maintainAspectRatio:false,
+            plugins:{legend:{labels:{color:"#8b949e",font:{size:10},boxWidth:12}}},
+            scales:{x:{ticks:{color:"#8b949e",font:{size:9}},grid:{color:"#21262d"}},y:{ticks:{color:"#8b949e"},grid:{color:"#21262d"},beginAtZero:true}}}
+        });
+      } else {
+        chartTrend.data.labels=tL.length?tL:["No data"];
+        chartTrend.data.datasets[0].data=tR;
+        chartTrend.data.datasets[1].data=tP;
+        chartTrend.update("none");
+      }
+
+      // -- Graph 3: Donut --
+      const cL = data.command_categories.length ? data.command_categories.map(d=>d.category) : ["No data"];
+      const cD = data.command_categories.length ? data.command_categories.map(d=>d.count)    : [1];
+      if (!chartCategories) {
+        chartCategories = new Chart(document.getElementById("chart-categories"), {
+          type:"doughnut",
+          data:{labels:cL,datasets:[{data:cD,backgroundColor:["#58a6ff","#39d353","#f85149","#d29922","#bc8cff","#ff7b72"],borderWidth:0}]},
+          options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:"right",labels:{color:"#8b949e",font:{size:10},boxWidth:12}}}}
+        });
+      } else { chartCategories.data.labels=cL; chartCategories.data.datasets[0].data=cD; chartCategories.update("none"); }
+
+    } catch(e) { console.error("Predictions error:", e); }
+  }
+
+  function refresh() {
+    fetchStatus();
+    fetchStats();
+    fetchFeed();
+    fetchGeo();
+    fetchPredictions();
+  }
+
+  refresh();
+  setInterval(refresh, 5000);
+</script>
+</body>
+</html>
