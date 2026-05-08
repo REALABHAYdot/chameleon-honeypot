@@ -1,8 +1,3 @@
-"""
-Chameleon Honeypot - Main SSH Server
-Listens on port 2222 and handles attacker sessions.
-"""
- 
 import socket
 import threading
 import paramiko
@@ -16,12 +11,8 @@ logging.getLogger("paramiko").setLevel(logging.WARNING)
 
 
 class HoneypotSSHServer(paramiko.ServerInterface):
-    """
-    Paramiko server interface.
-    Accepts ALL login attempts so attackers always get in.
-    """
 
-    def __init__(self, client_ip, honeypot_logger):
+   def __init__(self, client_ip, honeypot_logger):
         self.client_ip = client_ip
         self.logger = honeypot_logger
         self.username = None
@@ -49,7 +40,6 @@ class HoneypotSSHServer(paramiko.ServerInterface):
 
 
 def handle_client(client_socket, client_address, honeypot_logger):
-    """Handles a single incoming SSH connection."""
     client_ip = client_address[0]
     print(f"[+] New connection from {client_ip}")
     honeypot_logger.log_event(client_ip, "CONNECTION", "New connection established")
@@ -58,7 +48,7 @@ def handle_client(client_socket, client_address, honeypot_logger):
     try:
         transport = paramiko.Transport(client_socket)
         transport.add_server_key(HOST_KEY)
-        transport.local_version = "SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.6"  
+        transport.local_version = "SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0."  
 
         server = HoneypotSSHServer(client_ip, honeypot_logger)
         transport.start_server(server=server)
@@ -81,7 +71,6 @@ def handle_client(client_socket, client_address, honeypot_logger):
 
 
 def start_server(host="0.0.0.0", port=2222):
-    """Starts the honeypot SSH listener."""
     honeypot_logger = HoneypotLogger()
 
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -90,7 +79,7 @@ def start_server(host="0.0.0.0", port=2222):
     server_socket.listen(5)
 
     print("=" * 55)
-    print("   🦎 CHAMELEON HONEYPOT - AI-Powered SSH Decoy")
+    print("    CHAMELEON HONEYPOT - AI-Powered SSH Decoy")
     print("=" * 55)
     print(f"   Listening on {host}:{port}")
     print(f"   Logs → history.log")
